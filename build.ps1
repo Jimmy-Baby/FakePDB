@@ -72,25 +72,65 @@ function Get-Architecture()
 }
 
 function Set-BuildEnvironment(){
-    if("windows" -eq $(Get-OS)){
-        #https://stackoverflow.com/a/64744522
-        $location = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools"
-        if (!(Test-Path -Path $location)) {
-            $location = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools"
-        }
-        if (!(Test-Path -Path $location)) {
-            Write-Error "MSVC was not found"
-            exit 1
-        }
-        Push-Location $location
-        cmd /c "VsDevCmd.bat -arch=amd64 -host_arch=amd64&set " |
-        ForEach-Object {
-        if ($_ -match "=") {
-            $v = $_.split("="); set-item -force -path "ENV:\$($v[0])"  -value "$($v[1])"
-        }
-        }
-        Pop-Location
+    if("windows" -ne $(Get-OS)){
+        return
     }
+
+    if ($env:VSCMD_VER) {
+        Write-Output "Visual Studio Developer environment already initialized: $env:VSCMD_VER"
+        return
+    }
+
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    $installPath = $null
+
+    if (Test-Path -Path $vswhere) {
+        $installPath = & $vswhere `
+            -latest `
+            -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+    }
+
+    if (-not $installPath) {
+        $candidatePaths = @(
+            "${env:ProgramFiles}\Microsoft Visual Studio\2026\Enterprise",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2026\Community",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2019\Enterprise",
+            "${env:ProgramFiles}\Microsoft Visual Studio\2019\Community"
+        )
+
+        foreach ($candidate in $candidatePaths) {
+            if (Test-Path -Path "$candidate\Common7\Tools\VsDevCmd.bat") {
+                $installPath = $candidate
+                break
+            }
+        }
+    }
+
+    if (-not $installPath) {
+        Write-Error "MSVC was not found. Could not locate a Visual Studio install with VC tools."
+        exit 1
+    }
+
+    $vsDevCmd = Join-Path $installPath "Common7\Tools\VsDevCmd.bat"
+
+    if (!(Test-Path -Path $vsDevCmd)) {
+        Write-Error "MSVC was not found. Missing VsDevCmd.bat at: $vsDevCmd"
+        exit 1
+    }
+
+    Write-Output "Using Visual Studio Developer Command Prompt: $vsDevCmd"
+
+    cmd /c "`"$vsDevCmd`" -arch=amd64 -host_arch=amd64 && set" |
+        ForEach-Object {
+            if ($_ -match "=") {
+                $name, $value = $_ -split "=", 2
+                Set-Item -Force -Path "Env:\$name" -Value "$value"
+            }
+        }
 }
 
 

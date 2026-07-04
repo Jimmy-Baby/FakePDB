@@ -9,15 +9,21 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show Visual Studio installations
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -products * -format table
+
       - name: Build
+        shell: pwsh
         run: ./build.ps1
 
       - uses: actions/upload-artifact@v4
         with:
           name: binaries
-          path: build/deploy/*.zip
+          path: ./~build/deploy/*.zip
